@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+    }
+
+    .tower {
+      display: inline-block;
+      width: 100px;
+      height: 200px;
+      background-color: #ddd;
+      margin: 10px;
+    }
+
+    .disk {
+      background-color: #3498db;
+      width: 100px;
+      height: 20px;
+      margin: 10px 0;
+      transition: all 0.3s ease-in-out;
+    }
+  </style>
+  <title>Tower of Hanoi</title>
+</head>
+
+<body>
+  <h1>Tower of Hanoi</h1>
+  <div class="tower" id="towerA"></div>
+  <div class="tower" id="towerB"></div>
+  <div class="tower" id="towerC"></div>
+  <script>
+    const towerA = document.getElementById('towerA');
+    const towerB = document.getElementById('towerB');
+    const towerC = document.getElementById('towerC');
+    const disks = 4;
+
+    function createDisk(size) {
+      const disk = document.createElement('div');
+      disk.className = 'disk';
+      disk.style.width = 100 + size * 20 + 'px';
+      return disk;
+    }
+
+    function moveDisk(source, destination) {
+      const disk = source.lastChild;
+      if (disk) {
+        destination.appendChild(disk);
+      }
+    }
+
+    function towerOfHanoi(n, source, auxiliary, destination) {
+      if (n === 1) {
+        moveDisk(source, destination);
+      } else {
+        towerOfHanoi(n - 1, source, destination, auxiliary);
+        moveDisk(source, destination);
+        towerOfHanoi(n - 1, auxiliary, source, destination);
+      }
+    }
+
+    function initializeGame() {
+      for (let i = disks; i > 0; i--) {
+        towerA.appendChild(createDisk(i));
+      }
+    }
+
+    towerA.addEventListener('click', () => {
+      if (towerA.lastChild) {
+        selectedDisk = towerA.lastChild;
+      }
+    });
+
+    towerB.addEventListener('click', () => {
+      if (selectedDisk) {
+        towerB.appendChild(selectedDisk);
+        selectedDisk = null;
+      }
+    });
+
+    towerC.addEventListener('click', () => {
+      if (selectedDisk) {
+        towerC.appendChild(selectedDisk);
+        selectedDisk = null;
+      }
+    });
+
+    initializeGame();
+  </script>
+</body>
+
+</html>
