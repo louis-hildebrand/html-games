@@ -2,95 +2,255 @@
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-    }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        html,
+        body {
+            height: 100%;
+        }
 
-    .tower {
-      display: inline-block;
-      width: 100px;
-      height: 200px;
-      background-color: #ddd;
-      margin: 10px;
-    }
+        body {
+            font-family: Helvetica, sans-serif;
+        }
 
-    .disk {
-      background-color: #3498db;
-      width: 100px;
-      height: 20px;
-      margin: 10px 0;
-      transition: all 0.3s ease-in-out;
-    }
-  </style>
-  <title>Tower of Hanoi</title>
+        .play-area {
+            width: 100%;
+            height: 50%;
+            display: flex;
+            flex-direction: row;
+            margin-top: 5%;
+        }
+
+        .tower-zone {
+            width: 33%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: end;
+            position: relative;
+        }
+
+        .tower {
+            width: 10%;
+            height: 100%;
+            background-color: #ddd;
+            position: absolute;
+            top: 0;
+            left: auto;
+            z-index: -1;
+        }
+
+        .disk {
+            background-color: darkred;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            justify-content: center;
+            border: 2px solid black;
+            border-radius: 5px;
+            box-sizing: border-box;
+        }
+    </style>
+    <title>Tower of Hanoi</title>
 </head>
 
 <body>
-  <h1>Tower of Hanoi</h1>
-  <div class="tower" id="towerA"></div>
-  <div class="tower" id="towerB"></div>
-  <div class="tower" id="towerC"></div>
-  <script>
-    const towerA = document.getElementById('towerA');
-    const towerB = document.getElementById('towerB');
-    const towerC = document.getElementById('towerC');
-    const disks = 4;
+    <h1>Tower of Hanoi</h1>
+    <p>
+        Move the disks from the middle tower to the tower on the right-hand
+        side. You can only move one disk at a time and you cannot place a disk
+        on top of a smaller disk. To move a disk, click on the tower from which
+        to take the disk and then click on the tower on which to place the
+        disk.
+    </p>
+    <div>
+        <button onclick="ctrl_Reset()">Reset</button>
+        <button onclick="ctrl_Solve()">Solve</button>
+    </div>
+    <div class="play-area">
+        <div class="tower-zone" id="zone0">
+            <div class="tower" id="tower0"></div>
+        </div>
+        <div class="tower-zone" id="zone1">
+            <div class="tower" id="tower1"></div>
+        </div>
+        <div class="tower-zone" id="zone2">
+            <div class="tower" id="tower2"></div>
+        </div>
+    </div>
+    <script>
+        /* -------------------- MODEL -------------------- */
+        const NUM_DISKS = 8;
 
-    function createDisk(size) {
-      const disk = document.createElement('div');
-      disk.className = 'disk';
-      disk.style.width = 100 + size * 20 + 'px';
-      return disk;
-    }
+        let selectedZone = null;
+        let towers = {
+            "0": [],
+            "1": [],
+            "2": [],
+        };
 
-    function moveDisk(source, destination) {
-      const disk = source.lastChild;
-      if (disk) {
-        destination.appendChild(disk);
-      }
-    }
+        /* -------------------- CONTROLLER -------------------- */
+        function ctrl_ClickOnZone(n) {
+            if (selectedZone === null) {
+                selectedZone = n;
+                view_SelectZone(view_GetZone(n));
+            }
+            else if (selectedZone === n) {
+                selectedZone = null;
+                view_UnselectZone(view_GetZone(n));
+            }
+            else {
+                ctrl_MoveDisk(selectedZone, n);
+                view_UnselectZone(view_GetZone(selectedZone));
+                selectedZone = null;
+            }
+        }
 
-    function towerOfHanoi(n, source, auxiliary, destination) {
-      if (n === 1) {
-        moveDisk(source, destination);
-      } else {
-        towerOfHanoi(n - 1, source, destination, auxiliary);
-        moveDisk(source, destination);
-        towerOfHanoi(n - 1, auxiliary, source, destination);
-      }
-    }
+        function ctrl_MoveDisk(from, to) {
+            if (from === to) {
+                return;
+            }
+            if (!ctrl_HasDisks(from)) {
+                return;
+            }
+            const isMovingOntoSmallerDisk = ctrl_HasDisks(to)
+                && ctrl_PeekTopDiskNumber(from) > ctrl_PeekTopDiskNumber(to);
+            if (isMovingOntoSmallerDisk) {
+                return;
+            }
 
-    function initializeGame() {
-      for (let i = disks; i > 0; i--) {
-        towerA.appendChild(createDisk(i));
-      }
-    }
+            const diskNumberToMove = ctrl_PopTopDiskNumber(from);
+            ctrl_PushDiskNumber(diskNumberToMove, to);
 
-    towerA.addEventListener('click', () => {
-      if (towerA.lastChild) {
-        selectedDisk = towerA.lastChild;
-      }
-    });
+            const diskToMove = view_GetDisk(diskNumberToMove);
+            const zoneToMoveTo = view_GetZone(to);
+            view_AddDiskToZone(diskToMove, zoneToMoveTo);
+        }
 
-    towerB.addEventListener('click', () => {
-      if (selectedDisk) {
-        towerB.appendChild(selectedDisk);
-        selectedDisk = null;
-      }
-    });
+        function ctrl_Reset() {
+            view_ClearDisks();
+            towers = {
+                "0": [],
+                "1": [],
+                "2": [],
+            };
 
-    towerC.addEventListener('click', () => {
-      if (selectedDisk) {
-        towerC.appendChild(selectedDisk);
-        selectedDisk = null;
-      }
-    });
+            const middleZone = view_GetZone(1);
+            for (let n = NUM_DISKS; n >= 1; n--) {
+                view_AddDiskToZone(view_CreateDisk(n), middleZone);
+                ctrl_PushDiskNumber(n, 1);
+            }
+        }
 
-    initializeGame();
-  </script>
+        async function ctrl_Solve() {
+            ctrl_Reset();
+            await ctrl_SolveTowerOfHanoi(NUM_DISKS, 1, 0, 2);
+        }
+
+        function ctrl_GetDiskNumbers(zoneNumber) {
+            return towers[String(zoneNumber)];
+        }
+
+        function ctrl_HasDisks(zoneNumber) {
+            return ctrl_GetDiskNumbers(zoneNumber).length > 0;
+        }
+
+        function ctrl_PeekTopDiskNumber(zoneNumber) {
+            const disks = ctrl_GetDiskNumbers(zoneNumber);
+            return disks[disks.length - 1];
+        }
+
+        function ctrl_PopTopDiskNumber(zoneNumber) {
+            const disks = ctrl_GetDiskNumbers(zoneNumber);
+            return disks.pop();
+        }
+
+        function ctrl_PushDiskNumber(diskNumber, zoneNumber) {
+            const disks = ctrl_GetDiskNumbers(zoneNumber);
+            disks.push(diskNumber);
+        }
+
+        async function ctrl_MoveDiskWithDelay(from, to) {
+            ctrl_MoveDisk(from, to);
+            await sleep(500);
+        }
+
+        async function ctrl_SolveTowerOfHanoi(n, src, auxiliary, dest) {
+            if (n === 1) {
+                await ctrl_MoveDiskWithDelay(src, dest);
+            } else {
+                await ctrl_SolveTowerOfHanoi(n - 1, src, dest, auxiliary);
+                await ctrl_MoveDiskWithDelay(src, dest);
+                await ctrl_SolveTowerOfHanoi(n - 1, auxiliary, src, dest);
+            }
+        }
+
+        function sleep(milliseconds) {
+            return new Promise((resolve) => setTimeout(resolve, milliseconds));
+        }
+
+        /* -------------------- VIEW -------------------- */
+        function view_ClearDisks() {
+            const existingDisks = Array.from(
+                document.getElementsByClassName("disk")
+            );
+            existingDisks.forEach((d) => d.remove());
+        }
+
+        function view_CreateDisk(n) {
+            const disk = document.createElement("div");
+            disk.className = "disk";
+            disk.id = `disk${n}`;
+            // Want the width to be such that
+            //   - Disk 1 has width 25%
+            //   - Disk NUM_DISKS has width 95%
+            const width = 25 + (95 - 25) * (n - 1) / (NUM_DISKS - 1);
+            disk.style = `width: ${width}%; height: ${95 / NUM_DISKS}%;`;
+            disk.setAttribute("data-width", width);
+
+            const diskLabel = document.createElement("span");
+            diskLabel.innerText = n;
+            disk.append(diskLabel);
+
+            return disk;
+        }
+
+        function view_GetDisk(n) {
+            return document.getElementById(`disk${n}`);
+        }
+
+        function view_GetZone(n) {
+            return document.getElementById(`zone${n}`);
+        }
+
+        function view_AddDiskToZone(disk, zone) {
+            zone.prepend(disk);
+        }
+
+        function view_SelectZone(zone) {
+            zone.style.border = "2px black solid";
+        }
+
+        function view_UnselectZone(zone) {
+            zone.style.border = "none";
+        }
+
+        /* -------------------- START -------------------- */
+        (() => {
+            for (let n = 0; n < 3; n++) {
+                view_GetZone(n).addEventListener(
+                    "click",
+                    () => ctrl_ClickOnZone(n)
+                );
+            }
+
+            ctrl_Reset();
+        })();
+    </script>
 </body>
 
 </html>
