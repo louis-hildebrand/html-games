@@ -31,7 +31,6 @@
 
         .tower-zone {
             width: 33%;
-            height: 40vh;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -39,7 +38,7 @@
             position: relative;
             box-sizing: border-box;
             border-radius: 10px;
-            padding: 1vh;
+            padding: 0.5em;
         }
 
         .selected-zone {
@@ -52,14 +51,15 @@
 
         .tower {
             width: 10%;
-            height: 96%;
-            background-color: #ddd;
+            height: calc(100% - 0.5em);
+            background-color: #dddddd;
             position: absolute;
-            bottom: 1vh;
+            bottom: 0.5em;
             left: auto;
             z-index: -1;
             border-radius: 5px 5px 0 0;
             border: 2px solid black;
+            box-sizing: border-box;
         }
 
         .disk {
@@ -71,7 +71,8 @@
             border: 2px solid black;
             border-radius: 5px;
             box-sizing: border-box;
-            font-size: large;
+            font-size: medium;
+            padding: 0.3em;
         }
 
         .even-disk {
@@ -138,9 +139,28 @@
         <div class="tower-zone unselected-zone" id="zone2" onclick="ctrl_ClickOnZone(2)">
             <div class="tower" id="tower2"></div>
         </div>
+        <!--
+            Hacky way of getting the towers to keep a fixed height while
+            adjusting to the height of the disks.
+        -->
+        <div class="tower-zone unselected-zone" id="zone3" style="width: 1%; visibility: hidden;"></div>
     </div>
     <script>
         /* -------------------- VIEW -------------------- */
+        function view_Reset() {
+            const existingDisks = Array.from(
+                document.getElementsByClassName("disk")
+            );
+            existingDisks.forEach((d) => d.remove());
+
+            const middleZone = view_GetZone(1);
+            const hiddenZone = view_GetZone(3);
+            for (let n = numDisks; n >= 1; n--) {
+                view_AddDiskToZone(view_CreateDisk(n), middleZone);
+                view_AddDiskToZone(view_CreateDisk(n), hiddenZone);
+            }
+        }
+
         function view_ShowInstructions() {
             document.getElementById("instructions-modal").showModal();
         }
@@ -149,22 +169,15 @@
             document.getElementById("instructions-modal").close();
         }
 
-        function view_ClearDisks() {
-            const existingDisks = Array.from(
-                document.getElementsByClassName("disk")
-            );
-            existingDisks.forEach((d) => d.remove());
-        }
-
         function view_CreateDisk(n) {
             const disk = document.createElement("div");
             disk.className = n % 2 == 0 ? "disk even-disk" : "disk odd-disk";
             disk.id = `disk${n}`;
             // Want the width to be such that
             //   - Disk 1 has width 45%
-            //   - Disk NUM_DISKS has width 100%
-            const width = 45 + (100 - 45) * (n - 1) / (numDisks - 1);
-            disk.style = `width: ${width}%; height: ${95 / numDisks}%;`;
+            //   - Disk MAX_NUM_DISKS has width 100%
+            const width = 45 + (100 - 45) * (n - 1) / (MAX_NUM_DISKS - 1);
+            disk.style = `width: ${width}%;`;
             disk.setAttribute("data-width", width);
 
             const diskLabel = document.createElement("span");
@@ -276,18 +289,16 @@
             cancellationToken.cancelled = true;
             cancellationToken = { cancelled: false };
 
-            view_ClearDisks();
             towers = {
                 "0": [],
                 "1": [],
                 "2": [],
             };
-
-            const middleZone = view_GetZone(1);
             for (let n = numDisks; n >= 1; n--) {
-                view_AddDiskToZone(view_CreateDisk(n), middleZone);
                 model_PushDiskNumber(n, 1);
             }
+
+            view_Reset();
         }
 
         function ctrl_IncreaseNumDisks() {
