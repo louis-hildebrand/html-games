@@ -5,18 +5,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        html,
-        body {
-            height: 100%;
-        }
-
         body {
             font-family: Helvetica, sans-serif;
         }
 
+        dialog {
+            width: 75vw;
+        }
+
+        ::backdrop {
+            background: black;
+            opacity: 0.6;
+        }
+
+        button {
+            font-size: large;
+        }
+
         .play-area {
             width: 100%;
-            height: 50%;
             display: flex;
             flex-direction: row;
             margin-top: 5%;
@@ -24,27 +31,38 @@
 
         .tower-zone {
             width: 33%;
-            height: 100%;
+            height: 50vh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: end;
             position: relative;
+            box-sizing: border-box;
+            border-radius: 10px;
+            padding: 1vh;
+        }
+
+        .selected-zone {
+            border: 2px solid black;
+        }
+
+        .unselected-zone {
+            border: 2px solid transparent;
         }
 
         .tower {
             width: 10%;
-            height: 100%;
+            height: 96%;
             background-color: #ddd;
             position: absolute;
-            top: 0;
+            bottom: 1vh;
             left: auto;
             z-index: -1;
+            border-radius: 5px 5px 0 0;
+            border: 2px solid black;
         }
 
         .disk {
-            background-color: darkred;
-            color: white;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -54,39 +72,109 @@
             border-radius: 5px;
             box-sizing: border-box;
         }
+
+        .even-disk {
+            background-color: darkred;
+            color: white;
+        }
+
+        .odd-disk {
+            background-color: gold;
+            color: black;
+        }
     </style>
     <title>Tower of Hanoi</title>
 </head>
 
 <body>
     <h1>Tower of Hanoi</h1>
-    <p>
-        Move the disks from the middle tower to the tower on the right-hand
-        side. You can only move one disk at a time and you cannot place a disk
-        on top of a smaller disk. To move a disk, click on the tower from which
-        to take the disk and then click on the tower on which to place the
-        disk.
-    </p>
+    <dialog id="instructions-modal">
+        <h2>Instructions</h2>
+        <p>
+            Move the disks from the middle tower to the tower on the right-hand
+            side. You can only move one disk at a time and you cannot place a
+            disk on top of a smaller disk. To move a disk, click on the tower
+            from which to take the disk and then click on the tower on which to
+            place the disk.
+        </p>
+        <button onclick="view_HideInstructions()">Close</button>
+    </dialog>
     <div>
+        <button onclick="view_ShowInstructions()">Instructions</button>
         <button onclick="ctrl_Reset()">Reset</button>
         <button onclick="ctrl_Solve()">Solve</button>
     </div>
     <div class="play-area">
-        <div class="tower-zone" id="zone0">
+        <div class="tower-zone unselected-zone" id="zone0" onclick="ctrl_ClickOnZone(0)">
             <div class="tower" id="tower0"></div>
         </div>
-        <div class="tower-zone" id="zone1">
+        <div class="tower-zone unselected-zone" id="zone1" onclick="ctrl_ClickOnZone(1)">
             <div class="tower" id="tower1"></div>
         </div>
-        <div class="tower-zone" id="zone2">
+        <div class="tower-zone unselected-zone" id="zone2" onclick="ctrl_ClickOnZone(2)">
             <div class="tower" id="tower2"></div>
         </div>
     </div>
     <script>
+        /* -------------------- VIEW -------------------- */
+        function view_ShowInstructions() {
+            document.getElementById("instructions-modal").showModal();
+        }
+
+        function view_HideInstructions() {
+            document.getElementById("instructions-modal").close();
+        }
+
+        function view_ClearDisks() {
+            const existingDisks = Array.from(
+                document.getElementsByClassName("disk")
+            );
+            existingDisks.forEach((d) => d.remove());
+        }
+
+        function view_CreateDisk(n) {
+            const disk = document.createElement("div");
+            disk.className = n % 2 == 0 ? "disk even-disk" : "disk odd-disk";
+            disk.id = `disk${n}`;
+            // Want the width to be such that
+            //   - Disk 1 has width 25%
+            //   - Disk NUM_DISKS has width 95%
+            const width = 25 + (95 - 25) * (n - 1) / (NUM_DISKS - 1);
+            disk.style = `width: ${width}%; height: ${95 / NUM_DISKS}%;`;
+            disk.setAttribute("data-width", width);
+
+            const diskLabel = document.createElement("span");
+            diskLabel.innerText = n;
+            disk.append(diskLabel);
+
+            return disk;
+        }
+
+        function view_GetDisk(n) {
+            return document.getElementById(`disk${n}`);
+        }
+
+        function view_GetZone(n) {
+            return document.getElementById(`zone${n}`);
+        }
+
+        function view_AddDiskToZone(disk, zone) {
+            zone.prepend(disk);
+        }
+
+        function view_SelectZone(zone) {
+            zone.className = "tower-zone selected-zone";
+        }
+
+        function view_UnselectZone(zone) {
+            zone.className = "tower-zone unselected-zone";
+        }
+
         /* -------------------- MODEL -------------------- */
         const NUM_DISKS = 8;
 
         let selectedZone = null;
+        let cancellationToken = { cancelled: false };
         let towers = {
             "0": [],
             "1": [],
@@ -132,6 +220,9 @@
         }
 
         function ctrl_Reset() {
+            cancellationToken.cancelled = true;
+            cancellationToken = { cancelled: false };
+
             view_ClearDisks();
             towers = {
                 "0": [],
@@ -144,11 +235,6 @@
                 view_AddDiskToZone(view_CreateDisk(n), middleZone);
                 ctrl_PushDiskNumber(n, 1);
             }
-        }
-
-        async function ctrl_Solve() {
-            ctrl_Reset();
-            await ctrl_SolveTowerOfHanoi(NUM_DISKS, 1, 0, 2);
         }
 
         function ctrl_GetDiskNumbers(zoneNumber) {
@@ -174,79 +260,55 @@
             disks.push(diskNumber);
         }
 
-        async function ctrl_MoveDiskWithDelay(from, to) {
-            ctrl_MoveDisk(from, to);
-            await sleep(500);
+        async function ctrl_Solve() {
+            ctrl_Reset();
+            try {
+                await ctrl_SolveTowerOfHanoi(
+                    NUM_DISKS, 1, 0, 2, cancellationToken
+                );
+            }
+            catch (e) {
+                if (e.name !== "AbortError") {
+                    throw e;
+                }
+            }
         }
 
-        async function ctrl_SolveTowerOfHanoi(n, src, auxiliary, dest) {
+        async function ctrl_SolveTowerOfHanoi(n, src, auxiliary, dest, ct) {
             if (n === 1) {
-                await ctrl_MoveDiskWithDelay(src, dest);
+                await moveDiskWithDelayAndCancel(src, dest, ct);
             } else {
-                await ctrl_SolveTowerOfHanoi(n - 1, src, dest, auxiliary);
-                await ctrl_MoveDiskWithDelay(src, dest);
-                await ctrl_SolveTowerOfHanoi(n - 1, auxiliary, src, dest);
+                await ctrl_SolveTowerOfHanoi(n - 1, src, dest, auxiliary, ct);
+                await moveDiskWithDelayAndCancel(src, dest, ct);
+                await ctrl_SolveTowerOfHanoi(n - 1, auxiliary, src, dest, ct);
             }
+        }
+
+        async function moveDiskWithDelayAndCancel(from, to, ct) {
+            if (ct.cancelled) {
+                throw { name: "AbortError" };
+            }
+            ctrl_MoveDisk(from, to);
+            await sleep(500);
         }
 
         function sleep(milliseconds) {
             return new Promise((resolve) => setTimeout(resolve, milliseconds));
         }
 
-        /* -------------------- VIEW -------------------- */
-        function view_ClearDisks() {
-            const existingDisks = Array.from(
-                document.getElementsByClassName("disk")
-            );
-            existingDisks.forEach((d) => d.remove());
-        }
-
-        function view_CreateDisk(n) {
-            const disk = document.createElement("div");
-            disk.className = "disk";
-            disk.id = `disk${n}`;
-            // Want the width to be such that
-            //   - Disk 1 has width 25%
-            //   - Disk NUM_DISKS has width 95%
-            const width = 25 + (95 - 25) * (n - 1) / (NUM_DISKS - 1);
-            disk.style = `width: ${width}%; height: ${95 / NUM_DISKS}%;`;
-            disk.setAttribute("data-width", width);
-
-            const diskLabel = document.createElement("span");
-            diskLabel.innerText = n;
-            disk.append(diskLabel);
-
-            return disk;
-        }
-
-        function view_GetDisk(n) {
-            return document.getElementById(`disk${n}`);
-        }
-
-        function view_GetZone(n) {
-            return document.getElementById(`zone${n}`);
-        }
-
-        function view_AddDiskToZone(disk, zone) {
-            zone.prepend(disk);
-        }
-
-        function view_SelectZone(zone) {
-            zone.style.border = "2px black solid";
-        }
-
-        function view_UnselectZone(zone) {
-            zone.style.border = "none";
-        }
-
         /* -------------------- START -------------------- */
         (() => {
-            for (let n = 0; n < 3; n++) {
-                view_GetZone(n).addEventListener(
-                    "click",
-                    () => ctrl_ClickOnZone(n)
-                );
-            }
+            window.onkeydown = (e) => {
+                if (e.key === "1") {
+                    ctrl_ClickOnZone(0);
+                }
+                else if (e.key === "2") {
+                    ctrl_ClickOnZone(1);
+                }
+                else if (e.key === "3") {
+                    ctrl_ClickOnZone(2);
+                }
+            };
 
             ctrl_Reset();
         })();
