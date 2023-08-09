@@ -31,7 +31,7 @@
 
         .tower-zone {
             width: 33%;
-            height: 50vh;
+            height: 40vh;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -43,11 +43,11 @@
         }
 
         .selected-zone {
-            border: 2px solid black;
+            border: 2px dotted black;
         }
 
         .unselected-zone {
-            border: 2px solid transparent;
+            border: 2px dotted transparent;
         }
 
         .tower {
@@ -71,6 +71,7 @@
             border: 2px solid black;
             border-radius: 5px;
             box-sizing: border-box;
+            font-size: large;
         }
 
         .even-disk {
@@ -81,6 +82,23 @@
         .odd-disk {
             background-color: gold;
             color: black;
+        }
+
+        #num-disks-input {
+            margin-left: 2vw;
+            font-size: large;
+        }
+
+        #num-disks-input-box {
+            width: 2em;
+            text-align: center;
+            font-size: large;
+        }
+
+        .btn-row {
+            display: flex;
+            flex-direction: row;
+            gap: 0.4em;
         }
     </style>
     <title>Tower of Hanoi</title>
@@ -99,10 +117,16 @@
         </p>
         <button onclick="view_HideInstructions()">Close</button>
     </dialog>
-    <div>
+    <div class="btn-row">
         <button onclick="view_ShowInstructions()">Instructions</button>
         <button onclick="ctrl_Reset()">Reset</button>
         <button onclick="ctrl_Solve()">Solve</button>
+        <div id="num-disks-input">
+            <span># Disks:</span>
+            <button onclick="ctrl_DecreaseNumDisks()">-</button>
+            <input id="num-disks-input-box" readonly value="8"></input>
+            <button onclick="ctrl_IncreaseNumDisks()">+</button>
+        </div>
     </div>
     <div class="play-area">
         <div class="tower-zone unselected-zone" id="zone0" onclick="ctrl_ClickOnZone(0)">
@@ -137,10 +161,10 @@
             disk.className = n % 2 == 0 ? "disk even-disk" : "disk odd-disk";
             disk.id = `disk${n}`;
             // Want the width to be such that
-            //   - Disk 1 has width 25%
-            //   - Disk NUM_DISKS has width 95%
-            const width = 25 + (95 - 25) * (n - 1) / (NUM_DISKS - 1);
-            disk.style = `width: ${width}%; height: ${95 / NUM_DISKS}%;`;
+            //   - Disk 1 has width 45%
+            //   - Disk NUM_DISKS has width 100%
+            const width = 45 + (100 - 45) * (n - 1) / (numDisks - 1);
+            disk.style = `width: ${width}%; height: ${95 / numDisks}%;`;
             disk.setAttribute("data-width", width);
 
             const diskLabel = document.createElement("span");
@@ -170,9 +194,15 @@
             zone.className = "tower-zone unselected-zone";
         }
 
-        /* -------------------- MODEL -------------------- */
-        const NUM_DISKS = 8;
+        function view_SetNumDisks(num) {
+            document.getElementById("num-disks-input-box").value = num;
+        }
 
+        /* -------------------- MODEL -------------------- */
+        const MIN_NUM_DISKS = 2;
+        const MAX_NUM_DISKS = 10;
+
+        let numDisks = 8;
         let selectedZone = null;
         let cancellationToken = { cancelled: false };
         let towers = {
@@ -180,6 +210,29 @@
             "1": [],
             "2": [],
         };
+
+        function model_GetDiskNumbers(zoneNumber) {
+            return towers[String(zoneNumber)];
+        }
+
+        function model_HasDisks(zoneNumber) {
+            return model_GetDiskNumbers(zoneNumber).length > 0;
+        }
+
+        function model_PeekTopDiskNumber(zoneNumber) {
+            const disks = model_GetDiskNumbers(zoneNumber);
+            return disks[disks.length - 1];
+        }
+
+        function model_PopTopDiskNumber(zoneNumber) {
+            const disks = model_GetDiskNumbers(zoneNumber);
+            return disks.pop();
+        }
+
+        function model_PushDiskNumber(diskNumber, zoneNumber) {
+            const disks = model_GetDiskNumbers(zoneNumber);
+            disks.push(diskNumber);
+        }
 
         /* -------------------- CONTROLLER -------------------- */
         function ctrl_ClickOnZone(n) {
@@ -202,17 +255,17 @@
             if (from === to) {
                 return;
             }
-            if (!ctrl_HasDisks(from)) {
+            if (!model_HasDisks(from)) {
                 return;
             }
-            const isMovingOntoSmallerDisk = ctrl_HasDisks(to)
-                && ctrl_PeekTopDiskNumber(from) > ctrl_PeekTopDiskNumber(to);
+            const isMovingOntoSmallerDisk = model_HasDisks(to)
+                && model_PeekTopDiskNumber(from) > model_PeekTopDiskNumber(to);
             if (isMovingOntoSmallerDisk) {
                 return;
             }
 
-            const diskNumberToMove = ctrl_PopTopDiskNumber(from);
-            ctrl_PushDiskNumber(diskNumberToMove, to);
+            const diskNumberToMove = model_PopTopDiskNumber(from);
+            model_PushDiskNumber(diskNumberToMove, to);
 
             const diskToMove = view_GetDisk(diskNumberToMove);
             const zoneToMoveTo = view_GetZone(to);
@@ -231,40 +284,37 @@
             };
 
             const middleZone = view_GetZone(1);
-            for (let n = NUM_DISKS; n >= 1; n--) {
+            for (let n = numDisks; n >= 1; n--) {
                 view_AddDiskToZone(view_CreateDisk(n), middleZone);
-                ctrl_PushDiskNumber(n, 1);
+                model_PushDiskNumber(n, 1);
             }
         }
 
-        function ctrl_GetDiskNumbers(zoneNumber) {
-            return towers[String(zoneNumber)];
+        function ctrl_IncreaseNumDisks() {
+            if (numDisks >= MAX_NUM_DISKS) {
+                return;
+            }
+
+            numDisks++;
+            view_SetNumDisks(numDisks);
+            ctrl_Reset();
         }
 
-        function ctrl_HasDisks(zoneNumber) {
-            return ctrl_GetDiskNumbers(zoneNumber).length > 0;
-        }
+        function ctrl_DecreaseNumDisks() {
+            if (numDisks <= MIN_NUM_DISKS) {
+                return;
+            }
 
-        function ctrl_PeekTopDiskNumber(zoneNumber) {
-            const disks = ctrl_GetDiskNumbers(zoneNumber);
-            return disks[disks.length - 1];
-        }
-
-        function ctrl_PopTopDiskNumber(zoneNumber) {
-            const disks = ctrl_GetDiskNumbers(zoneNumber);
-            return disks.pop();
-        }
-
-        function ctrl_PushDiskNumber(diskNumber, zoneNumber) {
-            const disks = ctrl_GetDiskNumbers(zoneNumber);
-            disks.push(diskNumber);
+            numDisks--;
+            view_SetNumDisks(numDisks);
+            ctrl_Reset();
         }
 
         async function ctrl_Solve() {
             ctrl_Reset();
             try {
                 await ctrl_SolveTowerOfHanoi(
-                    NUM_DISKS, 1, 0, 2, cancellationToken
+                    numDisks, 1, 0, 2, cancellationToken, ctrl_GetMoveDelay()
                 );
             }
             catch (e) {
@@ -274,22 +324,49 @@
             }
         }
 
-        async function ctrl_SolveTowerOfHanoi(n, src, auxiliary, dest, ct) {
+        async function ctrl_SolveTowerOfHanoi(n, src, help, dest, ct, delay) {
             if (n === 1) {
-                await moveDiskWithDelayAndCancel(src, dest, ct);
+                await moveDiskWithDelayAndCancel(src, dest, ct, delay);
             } else {
-                await ctrl_SolveTowerOfHanoi(n - 1, src, dest, auxiliary, ct);
-                await moveDiskWithDelayAndCancel(src, dest, ct);
-                await ctrl_SolveTowerOfHanoi(n - 1, auxiliary, src, dest, ct);
+                await ctrl_SolveTowerOfHanoi(n - 1, src, dest, help, ct, delay);
+                await moveDiskWithDelayAndCancel(src, dest, ct, delay);
+                await ctrl_SolveTowerOfHanoi(n - 1, help, src, dest, ct, delay);
             }
         }
 
-        async function moveDiskWithDelayAndCancel(from, to, ct) {
+        async function moveDiskWithDelayAndCancel(from, to, ct, delay) {
             if (ct.cancelled) {
                 throw { name: "AbortError" };
             }
             ctrl_MoveDisk(from, to);
-            await sleep(500);
+            await sleep(delay);
+        }
+
+        function ctrl_GetMoveDelay() {
+            const numMoves = ctrl_GetNumMovesInSolution();
+            const delay = 15_000 / numMoves;
+            return Math.max(50, Math.min(500, delay));
+        }
+
+        function ctrl_GetNumMovesInSolution() {
+            // Let f(n) be the number of moves that ctrl_SolveTowerOfHanoi will
+            // take to solve the puzzle with n disks. f is characterized by the
+            // following recurrence relation:
+            //  * f(1) = 1,
+            //  * f(n) = 2*f(n-1) + 1 for n > 1
+
+            // f(n) = 2*[2*f(n-1) + 1] + 1
+            //      = 2^2*f(n-1) + (1 + 2)
+            //      = 2^2*[2*f(n-2) + 1] + (1 + 2)
+            //      = 2^3*f(n-2) + (1 + 2 + 2^2)
+            //      = ...
+            //      = 2^(k+1)*f(n-k) + (1 + 2 + ... + 2^k)
+            //      = 2^(k+1)*f(n-k) + 2^(k+1) - 1
+            //      = ... (k = n - 1)
+            //      = 2^n*f(1) + 2^n - 1
+            //      = 2*2^n - 1
+
+            return 2 * (2 ** numDisks) - 1;
         }
 
         function sleep(milliseconds) {
