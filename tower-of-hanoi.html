@@ -10,7 +10,7 @@
         }
 
         dialog {
-            width: 75vw;
+            max-width: 75vw;
         }
 
         ::backdrop {
@@ -85,8 +85,10 @@
             color: black;
         }
 
-        #num-disks-input {
-            margin-left: 2vw;
+        .btn-row {
+            display: flex;
+            flex-direction: row;
+            gap: 1em;
             font-size: large;
         }
 
@@ -96,10 +98,10 @@
             font-size: large;
         }
 
-        .btn-row {
-            display: flex;
-            flex-direction: row;
-            gap: 0.4em;
+        #timer-input-box {
+            width: 6em;
+            text-align: center;
+            font-size: large;
         }
     </style>
     <title>Tower of Hanoi</title>
@@ -118,15 +120,30 @@
         </p>
         <button onclick="view_HideInstructions()">Close</button>
     </dialog>
+    <dialog id="game-over-modal">
+        <h2>Good Work! 🥳</h2>
+        <p>
+            You solved the Tower of Hanoi with
+            <span id="game-over-num-disks"></span> disks in
+            <span id="game-over-time"></span>.
+        </p>
+        <button onclick="view_HideGameOver()">Close</button>
+    </dialog>
     <div class="btn-row">
-        <button onclick="view_ShowInstructions()">Instructions</button>
-        <button onclick="ctrl_Reset()">Reset</button>
-        <button onclick="ctrl_Solve()">Solve</button>
-        <div id="num-disks-input">
+        <div>
+            <button onclick="view_ShowInstructions()">Instructions</button>
+            <button onclick="ctrl_Reset()">Reset</button>
+            <button onclick="ctrl_Solve()">Solve</button>
+        </div>
+        <div>
             <span># Disks:</span>
             <button onclick="ctrl_DecreaseNumDisks()">-</button>
-            <input id="num-disks-input-box" readonly value="8"></input>
+            <input id="num-disks-input-box" readonly value="8" />
             <button onclick="ctrl_IncreaseNumDisks()">+</button>
+        </div>
+        <div>
+            <span>Time</span>
+            <input id="timer-input-box" value="00:00" />
         </div>
     </div>
     <div class="play-area">
@@ -167,6 +184,16 @@
 
         function view_HideInstructions() {
             document.getElementById("instructions-modal").close();
+        }
+
+        function view_ShowGameOver(numDisks, time) {
+            document.getElementById("game-over-num-disks").innerText = numDisks;
+            document.getElementById("game-over-time").innerText = time;
+            document.getElementById("game-over-modal").showModal();
+        }
+
+        function view_HideGameOver() {
+            document.getElementById("game-over-modal").close();
         }
 
         function view_CreateDisk(n) {
@@ -211,6 +238,10 @@
             document.getElementById("num-disks-input-box").value = num;
         }
 
+        function view_UpdateTimer(time) {
+            document.getElementById("timer-input-box").value = time;
+        }
+
         /* -------------------- MODEL -------------------- */
         const MIN_NUM_DISKS = 2;
         const MAX_NUM_DISKS = 10;
@@ -218,14 +249,21 @@
         let numDisks = 8;
         let selectedZone = null;
         let cancellationToken = { cancelled: false };
-        let towers = {
-            "0": [],
-            "1": [],
-            "2": [],
-        };
+        let timer = { start: null, end: null };
+        let towers = [[], [], []];
+
+        function model_Reset() {
+            selectedZone = null;
+            cancellationToken = { cancelled: false };
+            timer = { start: null, end: null };
+            towers = [[], [], []];
+            for (let n = numDisks; n >= 1; n--) {
+                model_PushDiskNumber(n, 1);
+            }
+        }
 
         function model_GetDiskNumbers(zoneNumber) {
-            return towers[String(zoneNumber)];
+            return towers[zoneNumber];
         }
 
         function model_HasDisks(zoneNumber) {
@@ -247,6 +285,42 @@
             disks.push(diskNumber);
         }
 
+        function model_IsGameOver() {
+            return towers[0].length === 0 && towers[1].length === 0;
+        }
+
+        // TODO: Are all these functions needed?
+        function model_IsTimerStarted() {
+            return timer.start !== null;
+        }
+
+        function model_IsTimerStopped() {
+            return timer.end !== null;
+        }
+
+        function model_StartTimer() {
+            timer.start = performance.now();
+        }
+
+        function model_StopTimer() {
+            timer.end = performance.now();
+        }
+
+        function model_GetElapsedMilliseconds() {
+            if (!timer.start) {
+                // Not started
+                return 0;
+            }
+            else if (!timer.end) {
+                // Started but not stopped
+                return performance.now() - timer.start;
+            }
+            else {
+                // Started and stopped
+                return timer.end - timer.start;
+            }
+        }
+
         /* -------------------- CONTROLLER -------------------- */
         function ctrl_ClickOnZone(n) {
             if (selectedZone === null) {
@@ -258,13 +332,13 @@
                 view_UnselectZone(view_GetZone(n));
             }
             else {
-                ctrl_MoveDisk(selectedZone, n);
+                ctrl_MoveDisk(selectedZone, n, true);
                 view_UnselectZone(view_GetZone(selectedZone));
                 selectedZone = null;
             }
         }
 
-        function ctrl_MoveDisk(from, to) {
+        function ctrl_MoveDisk(from, to, isManual) {
             if (from === to) {
                 return;
             }
@@ -277,28 +351,62 @@
                 return;
             }
 
+            if (isManual && !model_IsTimerStarted()) {
+                model_StartTimer();
+            }
+
             const diskNumberToMove = model_PopTopDiskNumber(from);
             model_PushDiskNumber(diskNumberToMove, to);
 
             const diskToMove = view_GetDisk(diskNumberToMove);
             const zoneToMoveTo = view_GetZone(to);
             view_AddDiskToZone(diskToMove, zoneToMoveTo);
+
+            if (isManual) {
+                ctrl_CheckGameOver();
+            }
+        }
+
+        function ctrl_CheckGameOver() {
+            if (!model_IsGameOver()) {
+                return;
+            }
+
+            model_StopTimer();
+
+            const time = ctrl_FormatTime(model_GetElapsedMilliseconds());
+            view_ShowGameOver(numDisks, time);
+        }
+
+        function ctrl_FormatTime(totalMilliseconds) {
+            const minutes = Math.floor(totalMilliseconds / 60_000);
+            const zeroPaddedMinutes = minutes < 10
+                ? `0${minutes}`
+                : `${minutes}`;
+            const remainingMilliseconds = totalMilliseconds - 60_000 * minutes;
+            const seconds = Math.round(remainingMilliseconds / 1_000);
+            const zeroPaddedSeconds = seconds < 10
+                ? `0${seconds}`
+                : `${seconds}`;
+            return `${zeroPaddedMinutes}:${zeroPaddedSeconds}`;
         }
 
         function ctrl_Reset() {
+            // If there's an automatic solve in progress, stop it
             cancellationToken.cancelled = true;
-            cancellationToken = { cancelled: false };
 
-            towers = {
-                "0": [],
-                "1": [],
-                "2": [],
-            };
-            for (let n = numDisks; n >= 1; n--) {
-                model_PushDiskNumber(n, 1);
-            }
-
+            model_Reset();
             view_Reset();
+
+            ctrl_UpdateTimer();
+        }
+
+        function ctrl_UpdateTimer() {
+            const time = ctrl_FormatTime(model_GetElapsedMilliseconds());
+            view_UpdateTimer(time);
+            if (!model_IsTimerStopped()) {
+                setTimeout(ctrl_UpdateTimer, 1000);
+            }
         }
 
         function ctrl_IncreaseNumDisks() {
@@ -349,7 +457,7 @@
             if (ct.cancelled) {
                 throw { name: "AbortError" };
             }
-            ctrl_MoveDisk(from, to);
+            ctrl_MoveDisk(from, to, false);
             await sleep(delay);
         }
 
@@ -366,18 +474,19 @@
             //  * f(1) = 1,
             //  * f(n) = 2*f(n-1) + 1 for n > 1
 
-            // f(n) = 2*[2*f(n-1) + 1] + 1
-            //      = 2^2*f(n-1) + (1 + 2)
-            //      = 2^2*[2*f(n-2) + 1] + (1 + 2)
-            //      = 2^3*f(n-2) + (1 + 2 + 2^2)
+            // f(n) = 2*f(n-1) + 1
+            //      = 2*[2*f(n-2) + 1] + 1
+            //      = 2^2*f(n-2) + (1 + 2)
+            //      = 2^2*[2*f(n-3) + 1] + (1 + 2)
+            //      = 2^3*f(n-3) + (1 + 2 + 2^2)
             //      = ...
-            //      = 2^(k+1)*f(n-k) + (1 + 2 + ... + 2^k)
-            //      = 2^(k+1)*f(n-k) + 2^(k+1) - 1
+            //      = 2^k*f(n-k) + [1 + 2 + ... + 2^(k-1)]
+            //      = 2^k*f(n-k) + 2^k - 1
             //      = ... (k = n - 1)
-            //      = 2^n*f(1) + 2^n - 1
-            //      = 2*2^n - 1
+            //      = 2^(n-1)*f(1) + 2^(n-1) - 1
+            //      = 2^n - 1
 
-            return 2 * (2 ** numDisks) - 1;
+            return 2 ** numDisks - 1;
         }
 
         function sleep(milliseconds) {
