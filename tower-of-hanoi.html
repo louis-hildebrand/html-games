@@ -22,7 +22,14 @@
             font-size: large;
         }
 
-        .play-area {
+        .btn-row {
+            display: flex;
+            flex-direction: row;
+            gap: 1em;
+            font-size: large;
+        }
+
+        #play-area {
             width: 100%;
             display: flex;
             flex-direction: row;
@@ -85,13 +92,6 @@
             color: black;
         }
 
-        .btn-row {
-            display: flex;
-            flex-direction: row;
-            gap: 1em;
-            font-size: large;
-        }
-
         #num-disks-input-box {
             width: 2em;
             text-align: center;
@@ -146,7 +146,7 @@
             <input id="timer-input-box" value="00:00" />
         </div>
     </div>
-    <div class="play-area">
+    <div id="play-area">
         <div class="tower-zone unselected-zone" id="zone0" onclick="ctrl_ClickOnZone(0)">
             <div class="tower" id="tower0"></div>
         </div>

@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        html {
+            height: 100%;
+        }
+
+        body {
+            font-family: Helvetica, sans-serif;
+            /*
+             * For some reason, setting this to 100% makes the body taller than
+             * the page.
+             */
+            height: 97%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        dialog {
+            max-width: 75vw;
+        }
+
+        ::backdrop {
+            background: black;
+            opacity: 0.6;
+        }
+
+        button {
+            font-size: large;
+        }
+
+        .btn-row {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 1em;
+            font-size: large;
+        }
+
+        #size-input-box {
+            width: 2em;
+            text-align: center;
+            font-size: large;
+        }
+
+        #timer-input-box {
+            width: 4em;
+            text-align: center;
+            font-size: large;
+        }
+
+        #play-area {
+            flex-grow: 1;
+            padding: 3%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #board {
+            border: 1em solid #202A44;
+            background-color: #bbeeff;
+            width: min(75vw, 80vh - 8lh);
+            aspect-ratio: 1 / 1;
+            border-radius: 1%;
+            position: relative;
+        }
+
+        .tile {
+            position: absolute;
+            aspect-ratio: 1 / 1;
+            border-radius: 10%;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            font-weight: bold;
+            transition: all 0.1s ease-in-out;
+        }
+
+        .even-tile {
+            background-color: #bbeeff;
+            color: #3d6b7a;
+            border: 2px solid #202A44;
+        }
+
+        .odd-tile {
+            background-color: #3d6b7a;
+            color: #bbeeff;
+            border: 2px solid #202A44;
+        }
+    </style>
+    <title>15 Puzzle</title>
+</head>
+
+<body>
+    <dialog id="instructions-modal">
+        <h2>Instructions</h2>
+        <p>
+            Slide the tiles so that they are in increasing order as read from
+            left to right and then top to bottom. You can click on "Reset" to
+            see the solved state of the puzzle.
+        </p>
+        <p>
+            To slide a tile, you can click on the tile or use the arrow keys.
+        </p>
+        <button onclick="Controller.hideInstructions()">Close</button>
+    </dialog>
+    <dialog id="game-over-modal">
+        <h2>Well Done! 🥳</h2>
+        <p>
+            You solved the <span id="game-over-size">15</span> Puzzle in
+            <span id="game-over-time"></span>.
+        </p>
+        <button onclick="Controller.hideGameOver()">Close</button>
+    </dialog>
+    <header>
+        <h1>15 Puzzle</h1>
+        <div class="btn-row">
+            <div>
+                <button onclick="Controller.showInstructions()">
+                    Instructions
+                </button>
+                <button onclick="Controller.reset()">Reset</button>
+                <button onclick="Controller.scramble()">Scramble</button>
+            </div>
+            <div>
+                <span>Size</span>
+                <button onclick="Controller.decreaseSize()">&minus;</button>
+                <input id="size-input-box" readonly value="4" />
+                <button onclick="Controller.increaseSize()">&plus;</button>
+            </div>
+            <div>
+                <span>Time</span>
+                <input id="timer-input-box" readonly value="00:00" />
+            </div>
+        </div>
+    </header>
+    <main id="play-area">
+        <div id="board"></div>
+    </main>
+    <script>
+        /* -------------------- VIEW -------------------- */
+        class View {
+            static showInstructions() {
+                document.getElementById("instructions-modal").showModal();
+            }
+
+            static hideInstructions() {
+                document.getElementById("instructions-modal").close();
+            }
+
+            static showGameOver(boardSize, milliseconds) {
+                document.getElementById("game-over-size").innerText
+                    = boardSize * boardSize - 1;
+                document.getElementById("game-over-time").innerText
+                    = View._formatTime(milliseconds, true);
+                document.getElementById("game-over-modal").showModal();
+            }
+
+            static hideGameOver() {
+                document.getElementById("game-over-modal").close();
+            }
+
+            static setBoardSize(size) {
+                document.getElementById("size-input-box").value = size;
+            }
+
+            static clearTiles() {
+                const existingTiles = Array.from(
+                    document.getElementsByClassName("tile")
+                );
+                existingTiles.forEach((t) => t.remove());
+            }
+
+            static getTile(n) {
+                return document.getElementById(`tile-${n}`);
+            }
+
+            static createTile(n, boardSize) {
+                const tile = document.createElement("div");
+                const evenOddClass = n % 2 === 0 ? "even-tile" : "odd-tile";
+                tile.className = `tile ${evenOddClass}`;
+                tile.id = `tile-${n}`;
+                tile.style.width = `${100 / boardSize}%`;
+                tile.onclick = () => Controller.clickTile(n);
+
+                const span = document.createElement("span");
+                span.innerText = n;
+                tile.appendChild(span);
+
+                document.getElementById("board").appendChild(tile);
+
+                return tile;
+            }
+
+            static placeTile(tile, row, col, boardSize) {
+                tile.style.left = `${100 * col / boardSize}%`;
+                tile.style.top = `${100 * row / boardSize}%`;
+            }
+
+            static updateTimer(milliseconds) {
+                document.getElementById("timer-input-box").value
+                    = View._formatTime(milliseconds, false);
+            }
+
+            static _formatTime(totalMilliseconds, showMilliseconds) {
+                const minutes = Math.floor(totalMilliseconds / 60_000);
+                const zeroPaddedMinutes = minutes < 10
+                    ? `0${minutes}`
+                    : `${minutes}`;
+                const remainingMilliseconds = totalMilliseconds
+                    - 60_000 * minutes;
+
+                const seconds = Math.floor(remainingMilliseconds / 1_000);
+                const zeroPaddedSeconds = seconds < 10
+                    ? `0${seconds}`
+                    : `${seconds}`;
+
+                if (showMilliseconds) {
+                    const milliseconds = Math.floor(
+                        remainingMilliseconds - 1_000 * seconds
+                    );
+                    const zeroPaddedMilliseconds
+                        = milliseconds < 10 ? `00${milliseconds}`
+                            : milliseconds < 100 ? `0${milliseconds}`
+                                : "" + milliseconds
+                    return `${zeroPaddedMinutes}:${zeroPaddedSeconds}.${zeroPaddedMilliseconds}`;
+                }
+                else {
+                    return `${zeroPaddedMinutes}:${zeroPaddedSeconds}`;
+                }
+            }
+        }
+
+        /* -------------------- MODEL -------------------- */
+        const MIN_BOARD_SIZE = 2;
+        const MAX_BOARD_SIZE = 9;
+
+        class Timer {
+            constructor() {
+                this.startTime = null;
+                this.endTime = null;
+            }
+
+            start() {
+                this.startTime = performance.now();
+            }
+
+            isStarted() {
+                return this.startTime !== null;
+            }
+
+            stop() {
+                this.endTime = performance.now();
+            }
+
+            isStopped() {
+                return this.endTime !== null;
+            }
+
+            getElapsedMilliseconds() {
+                if (this.startTime === null) {
+                    return 0;
+                }
+                else if (this.endTime === null) {
+                    return performance.now() - this.startTime;
+                }
+                else {
+                    return this.endTime - this.startTime;
+                }
+            }
+        }
+
+        class Puzzle {
+            constructor(size, scramble) {
+                this.size = size;
+                this.board = scramble
+                    ? Puzzle._getScrambledBoard(this.size)
+                    : Puzzle._getSolvedBoard(this.size);
+                this.holePosition = Puzzle._findHolePosition(
+                    this.board,
+                    this.size
+                );
+            }
+
+            findTile(n) {
+                for (let row = 0; row < this.size; row++) {
+                    for (let col = 0; col < this.size; col++) {
+                        if (this.board[row][col] === n) {
+                            return { row: row, col: col };
+                        }
+                    }
+                }
+                throw Error(`Failed to find tile ${n}.`);
+            }
+
+            isSolved() {
+                const solvedBoard = Puzzle._getSolvedBoard(this.size);
+                for (let row = 0; row < this.size; row++) {
+                    for (let col = 0; col < this.size; col++) {
+                        if (this.board[row][col] !== solvedBoard[row][col]) {
+                            return false;
+                        }
+                    }
+                }
+                return true;
+            }
+
+            static _getSolvedBoard(size) {
+                let board = [];
+                for (let i = 0; i < size; i++) {
+                    let row = [];
+                    for (let j = 0; j < size; j++) {
+                        const value = i === size - 1 && j === size - 1
+                            ? null
+                            : 1 + i * size + j;
+                        row.push(value);
+                    }
+                    board.push(row);
+                }
+                return board;
+            }
+
+            static _getScrambledBoard(size) {
+                let orderedValues = [null];
+                for (let i = 1; i <= size * size - 1; i++) {
+                    orderedValues.push(i);
+                }
+
+                // https://stackoverflow.com/a/46545530
+                const scrambledValues = orderedValues
+                    .map((x) => ({ key: Math.random(), value: x }))
+                    .sort((a, b) => a.key - b.key)
+                    .map((x) => x.value);
+
+                let scrambledBoard = [];
+                for (let i = 0; i < size; i++) {
+                    let row = [];
+                    for (let j = 0; j < size; j++) {
+                        const index = i * size + j;
+                        row.push(scrambledValues[index]);
+                    }
+                    scrambledBoard.push(row);
+                }
+
+                // TODO: Check that the puzzle is solvable.
+                // If it's not, swapping any two adjacent tiles should fix it, right?
+
+                return scrambledBoard;
+            }
+
+            static _findHolePosition(board, size) {
+                for (let i = 0; i < size; i++) {
+                    for (let j = 0; j < size; j++) {
+                        if (board[i][j] === null) {
+                            return { row: i, col: j }
+                        }
+                    }
+                }
+                throw Error("Could not find the hole on the board.");
+            }
+        }
+
+        class Model {
+            constructor() {
+                this.puzzle = null;
+                this.timer = null;
+            }
+        }
+
+        let model = new Model();
+
+        /* -------------------- CONTROLLER -------------------- */
+        class Controller {
+            static showInstructions() {
+                View.showInstructions();
+            }
+
+            static hideInstructions() {
+                View.hideInstructions();
+            }
+
+            static showGameOver() {
+                View.showGameOver(model.puzzle.size);
+            }
+
+            static hideGameOver() {
+                View.hideGameOver();
+            }
+
+            static reset(newSize) {
+                if (!newSize) {
+                    newSize = model.puzzle.size;
+                }
+
+                if (model.timer) {
+                    // Stop the old timer so that _updateTimerView() stops.
+                    model.timer.stop();
+                }
+
+                model.puzzle = new Puzzle(newSize, false);
+                model.timer = null;
+                View.updateTimer(0);
+
+                View.clearTiles();
+                for (let row = 0; row < model.puzzle.size; row++) {
+                    for (let col = 0; col < model.puzzle.size; col++) {
+                        const tileNumber = model.puzzle.board[row][col];
+                        if (tileNumber === null) {
+                            continue;
+                        }
+                        const tile = View.createTile(
+                            tileNumber,
+                            model.puzzle.size
+                        );
+                        View.placeTile(tile, row, col, model.puzzle.size);
+                    }
+                }
+            }
+
+            static scramble(newSize) {
+                if (!newSize) {
+                    newSize = model.puzzle.size;
+                }
+
+                if (model.timer) {
+                    // Stop the old timer so that _updateTimerView() stops.
+                    model.timer.stop();
+                }
+
+                model.puzzle = new Puzzle(newSize, true);
+                model.timer = new Timer();
+                View.updateTimer(0);
+
+                View.clearTiles();
+                for (let row = 0; row < model.puzzle.size; row++) {
+                    for (let col = 0; col < model.puzzle.size; col++) {
+                        const tileNumber = model.puzzle.board[row][col];
+                        if (tileNumber === null) {
+                            continue;
+                        }
+                        const tile = View.createTile(
+                            tileNumber,
+                            model.puzzle.size
+                        );
+                        View.placeTile(tile, row, col, model.puzzle.size);
+                    }
+                }
+            }
+
+            static decreaseSize() {
+                if (model.puzzle.size > MIN_BOARD_SIZE) {
+                    const newSize = model.puzzle.size - 1;
+                    View.setBoardSize(newSize);
+                    Controller.scramble(newSize);
+                }
+            }
+
+            static increaseSize() {
+                if (model.puzzle.size < MAX_BOARD_SIZE) {
+                    const newSize = model.puzzle.size + 1;
+                    View.setBoardSize(newSize);
+                    Controller.scramble(newSize);
+                }
+            }
+
+            static moveLeft() {
+                Controller._moveHoleTo(
+                    model.puzzle.holePosition.row,
+                    model.puzzle.holePosition.col + 1
+                );
+            }
+
+            static moveUp() {
+                Controller._moveHoleTo(
+                    model.puzzle.holePosition.row + 1,
+                    model.puzzle.holePosition.col
+                );
+            }
+
+            static moveRight() {
+                Controller._moveHoleTo(
+                    model.puzzle.holePosition.row,
+                    model.puzzle.holePosition.col - 1
+                );
+            }
+
+            static moveDown() {
+                Controller._moveHoleTo(
+                    model.puzzle.holePosition.row - 1,
+                    model.puzzle.holePosition.col
+                );
+            }
+
+            static clickTile(n) {
+                const tilePosition = model.puzzle.findTile(
+                    n,
+                    model.puzzle.board
+                );
+                Controller._moveHoleTo(tilePosition.row, tilePosition.col);
+            }
+
+            static _updateTimerView(timer) {
+                // Don't update one last time, otherwise this may overwrite the
+                // value set by reset() or scramble().
+                if (timer.isStopped()) {
+                    return;
+                }
+
+                View.updateTimer(timer.getElapsedMilliseconds());
+                setTimeout(() => Controller._updateTimerView(timer), 1000);
+            }
+
+            static _moveHoleTo(newHoleRow, newHoleCol) {
+                const isOutOfBounds = newHoleRow < 0
+                    || newHoleRow >= model.puzzle.size
+                    || newHoleCol < 0
+                    || newHoleCol >= model.puzzle.size;
+                if (isOutOfBounds) {
+                    return;
+                }
+
+                const oldHoleRow = model.puzzle.holePosition.row;
+                const oldHoleCol = model.puzzle.holePosition.col;
+
+                const verticalMove = Math.abs(newHoleRow - oldHoleRow);
+                const horizontalMove = Math.abs(newHoleCol - oldHoleCol);
+                const isNewHoleAdjacent =
+                    (verticalMove === 1 && horizontalMove === 0)
+                    || (horizontalMove === 1 && verticalMove === 0);
+                if (!isNewHoleAdjacent) {
+                    return;
+                }
+
+                if (model.timer && !model.timer.isStarted()) {
+                    model.timer.start();
+                    Controller._updateTimerView(model.timer);
+                }
+
+                const tileNumber = model.puzzle.board[newHoleRow][newHoleCol];
+                model.puzzle.board[oldHoleRow][oldHoleCol] = tileNumber;
+                model.puzzle.board[newHoleRow][newHoleCol] = null;
+                model.puzzle.holePosition = {
+                    row: newHoleRow,
+                    col: newHoleCol
+                };
+
+                View.placeTile(
+                    View.getTile(tileNumber),
+                    oldHoleRow,
+                    oldHoleCol,
+                    model.puzzle.size
+                );
+
+                // The solve was started from a scrambled state iff there is a
+                // timer.
+                const isInProgressSolve = model.timer
+                    && !model.timer.isStopped();
+                const isSolved = model.puzzle.isSolved(model.puzzle.board);
+                if (isInProgressSolve && isSolved) {
+                    model.timer.stop();
+                    View.updateTimer(model.timer.getElapsedMilliseconds());
+                    View.showGameOver(
+                        model.puzzle.size,
+                        model.timer.getElapsedMilliseconds()
+                    );
+                }
+            }
+        }
+
+        /* -------------------- START -------------------- */
+        (function () {
+            window.onkeydown = (e) => {
+                if (e.key === "ArrowLeft") {
+                    Controller.moveLeft();
+                }
+                else if (e.key === "ArrowUp") {
+                    Controller.moveUp();
+                }
+                else if (e.key === "ArrowRight") {
+                    Controller.moveRight();
+                }
+                else if (e.key === "ArrowDown") {
+                    Controller.moveDown();
+                }
+            };
+
+            Controller.scramble(4);
+        })();
+    </script>
+</body>
+
+</html>
