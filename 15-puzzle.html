@@ -5,6 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
+        :root {
+            /*
+             * Give this an initial value just in case the JavaScript code to
+             * resize doesn't get called for some reason.
+             */
+            --board-size: min(75vw, 80vh - 8lh);
+        }
+
         html {
             height: 100%;
         }
@@ -64,7 +72,7 @@
         #board {
             border: 1em solid #202A44;
             background-color: #bbeeff;
-            width: min(75vw, 80vh - 8lh);
+            width: var(--board-size);
             aspect-ratio: 1 / 1;
             border-radius: 1%;
             position: relative;
@@ -209,6 +217,19 @@
                     = View._formatTime(milliseconds, false);
             }
 
+            static resizeBoard() {
+                const playArea = document.getElementById("play-area");
+                const playAreaWidth = playArea.offsetWidth;
+                const playAreaHeight = playArea.offsetHeight;
+                const smallerLength = Math.min(playAreaWidth, playAreaHeight);
+                const boardSize = 0.75 * smallerLength;
+                console.log(`resize: playArea is ${playAreaWidth}x${playAreaHeight}, set board size to ${boardSize}.`);
+                document.documentElement.style.setProperty(
+                    "--board-size",
+                    `${boardSize}px`
+                );
+            }
+
             static _formatTime(totalMilliseconds, showMilliseconds) {
                 const minutes = Math.floor(totalMilliseconds / 60_000);
                 const zeroPaddedMinutes = minutes < 10
@@ -279,6 +300,7 @@
 
         class Puzzle {
             constructor(size, scramble) {
+                // TODO: Let the user choose both width and height
                 this.size = size;
                 this.board = scramble
                     ? Puzzle._getScrambledBoard(this.size)
@@ -301,10 +323,14 @@
             }
 
             isSolved() {
-                const solvedBoard = Puzzle._getSolvedBoard(this.size);
-                for (let row = 0; row < this.size; row++) {
-                    for (let col = 0; col < this.size; col++) {
-                        if (this.board[row][col] !== solvedBoard[row][col]) {
+                return Puzzle._isSolved(this.board, this.size);
+            }
+
+            static _isSolved(board, size) {
+                const solvedBoard = Puzzle._getSolvedBoard(size);
+                for (let row = 0; row < size; row++) {
+                    for (let col = 0; col < size; col++) {
+                        if (board[row][col] !== solvedBoard[row][col]) {
                             return false;
                         }
                     }
@@ -333,26 +359,49 @@
                     orderedValues.push(i);
                 }
 
-                // https://stackoverflow.com/a/46545530
-                const scrambledValues = orderedValues
-                    .map((x) => ({ key: Math.random(), value: x }))
-                    .sort((a, b) => a.key - b.key)
-                    .map((x) => x.value);
+                for (let attempt = 0; attempt < 10; attempt++) {
+                    // https://stackoverflow.com/a/46545530
+                    const scrambledValues = orderedValues
+                        .map((x) => ({ key: Math.random(), value: x }))
+                        .sort((a, b) => a.key - b.key)
+                        .map((x) => x.value);
 
-                let scrambledBoard = [];
-                for (let i = 0; i < size; i++) {
-                    let row = [];
-                    for (let j = 0; j < size; j++) {
-                        const index = i * size + j;
-                        row.push(scrambledValues[index]);
+                    let scrambledBoard = [];
+                    for (let i = 0; i < size; i++) {
+                        let row = [];
+                        for (let j = 0; j < size; j++) {
+                            const index = i * size + j;
+                            row.push(scrambledValues[index]);
+                        }
+                        scrambledBoard.push(row);
                     }
-                    scrambledBoard.push(row);
+
+                    if (!Puzzle._isSolvable(scrambledBoard, size)) {
+                        const tile00 = scrambledBoard[0][0];
+                        const tile01 = scrambledBoard[0][1];
+                        const tile10 = scrambledBoard[1][0];
+                        if (tile00 !== null && tile01 !== null) {
+                            scrambledBoard[0][0] = tile01;
+                            scrambledBoard[0][1] = tile00;
+                        }
+                        else if (tile00 !== null && tile10 !== null) {
+                            scrambledBoard[0][0] = tile10;
+                            scrambledBoard[1][0] = tile00;
+                        }
+                        else {
+                            scrambledBoard[0][1] = tile10;
+                            scrambledBoard[1][0] = tile01;
+                        }
+                    }
+
+                    if (Puzzle._isSolved(scrambledBoard, size)) {
+                        // Try again
+                        continue;
+                    }
+
+                    return scrambledBoard;
                 }
 
-                // TODO: Check that the puzzle is solvable.
-                // If it's not, swapping any two adjacent tiles should fix it, right?
-
-                return scrambledBoard;
             }
 
             static _findHolePosition(board, size) {
@@ -364,6 +413,46 @@
                     }
                 }
                 throw Error("Could not find the hole on the board.");
+            }
+
+            static _isSolvable(board, size) {
+                const hole = Puzzle._findHolePosition(board, size);
+                let fullBoard = Puzzle._deepCloneBoard(board);
+                fullBoard[hole.row][hole.col] = size * size;
+
+                const holeTaxicabDist = (size - 1 - hole.row)
+                    + (size - 1 - hole.col);
+
+                let permutation = 0;
+                for (let row0 = 0; row0 < size; row0++) {
+                    for (let col0 = 0; col0 < size; col0++) {
+                        for (let row1 = 0; row1 < size; row1++) {
+                            for (let col1 = 0; col1 < size; col1++) {
+                                const isTile1AfterTile0 = row0 < row1
+                                    || (row0 === row1 && col0 < col1);
+                                const isTile1LessThanTile0 =
+                                    fullBoard[row1][col1] < fullBoard[row0][col0];
+                                if (isTile1AfterTile0 && isTile1LessThanTile0) {
+                                    permutation++;
+                                }
+                            }
+                        }
+                    }
+                }
+
+                return (holeTaxicabDist + permutation) % 2 === 0;
+            }
+
+            static _deepCloneBoard(board) {
+                let newBoard = [];
+                for (let i = 0; i < board.length; i++) {
+                    let newRow = [];
+                    for (let j = 0; j < board[i].length; j++) {
+                        newRow.push(board[i][j]);
+                    }
+                    newBoard.push(newRow);
+                }
+                return newBoard;
             }
         }
 
@@ -506,6 +595,10 @@
                 Controller._moveHoleTo(tilePosition.row, tilePosition.col);
             }
 
+            static resizeBoard() {
+                View.resizeBoard();
+            }
+
             static _updateTimerView(timer) {
                 // Don't update one last time, otherwise this may overwrite the
                 // value set by reset() or scramble().
@@ -590,6 +683,9 @@
                     Controller.moveDown();
                 }
             };
+
+            window.onresize = Controller.resizeBoard;
+            window.onresize();
 
             Controller.scramble(4);
         })();
